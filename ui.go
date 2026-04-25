@@ -73,7 +73,7 @@ func formatSize(b int64) string {
 
 func (m model) renderDashboard() string {
 	var sb strings.Builder
-	tabNames := []string{" PRs", " Issues", " CI/CD", " Files"}
+	tabNames := []string{" PRs", " Issues", " CI/CD", " Files", " Inbox"}
 	var tabs []string
 	for i, name := range tabNames {
 		if i == m.activeTab {
@@ -97,16 +97,18 @@ func (m model) renderDashboard() string {
 
 	var helpText string
 	if m.activeTab == TabPRs {
-		helpText = "v: diff • m: merge • c: close"
+		helpText = "t: test • v: diff • m: merge • c: close"
 	} else if m.activeTab == TabCICD {
 		helpText = "v: logs • x: cancel • w: rerun"
 	} else if m.activeTab == TabFiles {
 		helpText = "enter: open/edit"
+	} else if m.activeTab == TabInbox {
+		helpText = "e: mark read • o: open browser"
 	} else {
 		helpText = "o: open in browser"
 	}
 
-	helpText = fmt.Sprintf("/: filter • %s • q: quit", helpText)
+	helpText = fmt.Sprintf("/: filter • +: create PR • %s • q: quit", helpText)
 
 	if m.state == StateFiltering {
 		helpText = selectedItemStyle.Render(fmt.Sprintf("🔍 Filter: %s█", m.filterQuery))
@@ -155,7 +157,6 @@ func (m model) renderListOnly(availableWidth int) string {
 		return sb.String()
 	}
 
-	// Apply filtering
 	var limit int
 	if m.activeTab == TabCICD {
 		limit = len(getFilteredRuns(list.Runs, m.filterQuery))
@@ -163,12 +164,15 @@ func (m model) renderListOnly(availableWidth int) string {
 	if m.activeTab == TabFiles {
 		limit = len(getFilteredFiles(list.Files, m.filterQuery))
 	}
+	if m.activeTab == TabInbox {
+		limit = len(getFilteredNotifs(list.Notifications, m.filterQuery))
+	}
 	if m.activeTab == TabPRs || m.activeTab == TabIssues {
 		limit = len(getFilteredItems(list.Items, m.filterQuery))
 	}
 
 	if limit == 0 {
-		sb.WriteString(" No items match filter.\n")
+		sb.WriteString(" No items found.\n")
 		for i := 1; i < m.listHeight; i++ {
 			sb.WriteString("\n")
 		}
@@ -207,6 +211,16 @@ func (m model) renderListOnly(availableWidth int) string {
 			} else {
 				rowStr = fmt.Sprintf(" %s", itemStyle.Render(cleanTitle))
 			}
+
+		} else if m.activeTab == TabInbox {
+			notifs := getFilteredNotifs(list.Notifications, m.filterQuery)
+			notif := notifs[i]
+			cleanTitle := truncate(notif.Subject.Title, usableSpace)
+			icon := " "
+			if !notif.Unread {
+				icon = " "
+			}
+			rowStr = fmt.Sprintf("%s %s", pendingStyle.Render(icon), cleanTitle)
 
 		} else {
 			items := getFilteredItems(list.Items, m.filterQuery)
@@ -253,6 +267,15 @@ func (m model) renderDetailOnly(availableWidth int) string {
 				fType = "Directory"
 			}
 			meta := fmt.Sprintf("Type: %s\nSize: %s\nModified: %s\nPerms: %s", fType, formatSize(file.Size), timeAgo(file.ModTime), file.Mode.String())
+			sb.WriteString(detailMetaStyle.Render(meta))
+		}
+	} else if m.activeTab == TabInbox {
+		notifs := getFilteredNotifs(list.Notifications, m.filterQuery)
+		if len(notifs) > 0 {
+			notif := notifs[list.Cursor]
+			sb.WriteString(repoBadgeStyle.Render(notif.Repository.FullName) + "\n")
+			sb.WriteString(selectedItemStyle.Render(truncate(notif.Subject.Title, usableSpace)) + "\n\n")
+			meta := fmt.Sprintf("Reason: %s\nType: %s\nUpdated: %s", notif.Reason, notif.Subject.Type, timeAgo(notif.UpdatedAt))
 			sb.WriteString(detailMetaStyle.Render(meta))
 		}
 	} else {

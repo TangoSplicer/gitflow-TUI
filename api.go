@@ -25,12 +25,16 @@ type runsMsg struct {
 	Runs []RunItem
 	Err  error
 }
+type notificationsMsg struct {
+	Tab  int
+	Data []NotificationItem
+	Err  error
+}
 type errMsg struct{ err error }
 type tickMsg time.Time
 type actionCompleteMsg struct{ Tab int }
-type editorFinishedMsg struct{ err error } // Signals the text editor closed
+type editorFinishedMsg struct{ err error }
 
-// PR File Models
 type PRFile struct {
 	Path      string `json:"path"`
 	Additions int    `json:"additions"`
@@ -41,7 +45,6 @@ type prViewResponse struct {
 }
 type filesMsg []PRFile
 
-// Local File Models
 type LocalFile struct {
 	Name    string
 	IsDir   bool
@@ -54,6 +57,22 @@ type localFilesMsg struct {
 	Dir   string
 	Files []LocalFile
 	Err   error
+}
+
+// Notification Models
+type NotificationItem struct {
+	Id        string    `json:"id"`
+	Reason    string    `json:"reason"`
+	Unread    bool      `json:"unread"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Subject   struct {
+		Title string `json:"title"`
+		Type  string `json:"type"`
+		Url   string `json:"url"`
+	} `json:"subject"`
+	Repository struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
 }
 
 func fetchGitHubToken(ctx context.Context) tea.Cmd {
@@ -70,6 +89,27 @@ func fetchGitHubToken(ctx context.Context) tea.Cmd {
 			return errMsg{fmt.Errorf("failed to get gh token: %w", err)}
 		}
 		return tokenMsg(strings.TrimSpace(string(out)))
+	}
+}
+
+func fetchNotifications(ctx context.Context, tab int) tea.Cmd {
+	return func() tea.Msg {
+		reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(reqCtx, "gh", "api", "notifications")
+		cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1")
+		out, err := cmd.Output()
+		if err != nil {
+			if reqCtx.Err() == context.Canceled {
+				return nil
+			}
+			return notificationsMsg{Tab: tab, Err: fmt.Errorf("failed to fetch notifications: %w", err)}
+		}
+		var notifs []NotificationItem
+		if err := json.Unmarshal(out, &notifs); err != nil {
+			return notificationsMsg{Tab: tab, Err: fmt.Errorf("parse error: %w", err)}
+		}
+		return notificationsMsg{Tab: tab, Data: notifs}
 	}
 }
 
@@ -130,7 +170,7 @@ func fetchLocalFiles(tab int, dir string) tea.Cmd {
 		abs, _ := filepath.Abs(dir)
 		if abs != "/" {
 			files = append(files, LocalFile{Name: "..", IsDir: true})
-		} // Go up directory
+		}
 
 		for _, e := range entries {
 			info, err := e.Info()
@@ -140,7 +180,6 @@ func fetchLocalFiles(tab int, dir string) tea.Cmd {
 			files = append(files, LocalFile{Name: e.Name(), IsDir: e.IsDir(), Size: info.Size(), ModTime: info.ModTime(), Mode: info.Mode()})
 		}
 
-		// Sort: Directories first, then files
 		sort.Slice(files, func(i, j int) bool {
 			if files[i].Name == ".." {
 				return true
@@ -156,7 +195,6 @@ func fetchLocalFiles(tab int, dir string) tea.Cmd {
 			}
 			return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
 		})
-
 		return localFilesMsg{Tab: tab, Dir: dir, Files: files}
 	}
 }
@@ -164,6 +202,9 @@ func fetchLocalFiles(tab int, dir string) tea.Cmd {
 func dispatchFetch(ctx context.Context, token string, tab int, page int, dir string) tea.Cmd {
 	if tab == TabCICD {
 		return fetchRuns(ctx, tab)
+	}
+	if tab == TabInbox {
+		return fetchNotifications(ctx, tab)
 	}
 	if tab == TabFiles {
 		if dir == "" {
@@ -188,6 +229,8 @@ func executeAction(ctx context.Context, tab int, action string, target string) t
 			args = []string{"run", "cancel", target}
 		case "rerun":
 			args = []string{"run", "rerun", target}
+		case "mark_read":
+			args = []string{"api", "-X", "PATCH", fmt.Sprintf("notifications/threads/%s", target)}
 		}
 		cmd := exec.CommandContext(reqCtx, "gh", args...)
 		cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1")

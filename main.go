@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,13 +20,14 @@ const (
 	StateDashboard
 	StateLoadingFiles
 	StateFileViewer
-	StateFiltering // New state for capturing text input
+	StateFiltering
 )
 const (
 	TabPRs = iota
 	TabIssues
 	TabCICD
 	TabFiles
+	TabInbox
 	TabCount
 )
 
@@ -56,6 +58,7 @@ type ListData struct {
 	Items         []GitHubItem
 	Runs          []RunItem
 	Files         []LocalFile
+	Notifications []NotificationItem
 	TotalCount    int
 	Page          int
 	IsLoading     bool
@@ -66,28 +69,62 @@ type ListData struct {
 	CurrentDir    string
 }
 
-type model struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	state       AppState
-	githubToken string
-	err         error
-	activeTab   int
-	lists       [TabCount]ListData
-	width       int
-	height      int
-	listHeight  int
-	isDesktop   bool
-	isPolling   bool
+type AppConfig struct {
+	DefaultTab      int    `json:"default_tab"`
+	RefreshInterval int    `json:"refresh_interval"`
+	PrimaryColor    string `json:"primary_color"`
+	BorderColor     string `json:"border_color"`
+}
 
+type model struct {
+	ctx               context.Context
+	cancel            context.CancelFunc
+	state             AppState
+	githubToken       string
+	err               error
+	activeTab         int
+	lists             [TabCount]ListData
+	width             int
+	height            int
+	listHeight        int
+	isDesktop         bool
+	isPolling         bool
 	files             []PRFile
 	fileCursor        int
 	fileViewportStart int
-
-	filterQuery string // New: Stores the active search string
+	filterQuery       string
+	config            AppConfig
 }
 
-// Helper functions for Dynamic Fuzzy Filtering
+// ENVIRONMENT-AGNOSTIC CONFIG LOADER
+func loadConfig() AppConfig {
+	cfg := AppConfig{DefaultTab: 0, RefreshInterval: 10, PrimaryColor: "212", BorderColor: "63"}
+
+	// 1. Bulletproof Home Directory Resolution
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return cfg
+		} // Ultimate fallback if system is completely locked down
+	}
+
+	configDir := filepath.Join(home, ".config", "gitflow")
+	configPath := filepath.Join(configDir, "config.json")
+
+	// 2. Read or aggressively create
+	if data, err := os.ReadFile(configPath); err == nil {
+		json.Unmarshal(data, &cfg)
+	} else {
+		if err := os.MkdirAll(configDir, 0755); err == nil {
+			data, _ := json.MarshalIndent(cfg, "", "  ")
+			os.WriteFile(configPath, data, 0644)
+		}
+	}
+	return cfg
+}
+
 func getFilteredItems(items []GitHubItem, query string) []GitHubItem {
 	if query == "" {
 		return items
@@ -127,14 +164,27 @@ func getFilteredFiles(files []LocalFile, query string) []LocalFile {
 	}
 	return res
 }
+func getFilteredNotifs(notifs []NotificationItem, query string) []NotificationItem {
+	if query == "" {
+		return notifs
+	}
+	var res []NotificationItem
+	q := strings.ToLower(query)
+	for _, n := range notifs {
+		if strings.Contains(strings.ToLower(n.Subject.Title), q) || strings.Contains(strings.ToLower(n.Repository.FullName), q) {
+			res = append(res, n)
+		}
+	}
+	return res
+}
 
-func doTick() tea.Cmd {
-	return tea.Tick(time.Second*10, func(t time.Time) tea.Msg { return tickMsg(t) })
+func doTick(interval int) tea.Cmd {
+	return tea.Tick(time.Second*time.Duration(interval), func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
 func (m model) Init() tea.Cmd {
 	m.lists[TabFiles].CurrentDir = "."
-	return tea.Batch(fetchGitHubToken(m.ctx), doTick())
+	return tea.Batch(fetchGitHubToken(m.ctx), doTick(m.config.RefreshInterval))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		var cmds []tea.Cmd
-		cmds = append(cmds, doTick())
+		cmds = append(cmds, doTick(m.config.RefreshInterval))
 		if m.state == StateDashboard && m.lists[m.activeTab].HasLoaded && !m.lists[m.activeTab].IsLoading && m.activeTab != TabFiles {
 			m.isPolling = true
 			cmds = append(cmds, dispatchFetch(m.ctx, m.githubToken, m.activeTab, 1, m.lists[m.activeTab].CurrentDir))
@@ -167,8 +217,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tokenMsg:
 		m.githubToken = string(msg)
 		m.state = StateDashboard
-		m.lists[TabPRs].IsLoading = true
-		return m, dispatchFetch(m.ctx, m.githubToken, TabPRs, 1, "")
+		m.lists[m.activeTab].IsLoading = true
+		return m, dispatchFetch(m.ctx, m.githubToken, m.activeTab, 1, m.lists[m.activeTab].CurrentDir)
 
 	case actionCompleteMsg:
 		m.lists[msg.Tab].IsLoading = true
@@ -179,7 +229,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeTab == TabFiles {
 			return m, dispatchFetch(m.ctx, m.githubToken, TabFiles, 1, m.lists[TabFiles].CurrentDir)
 		}
-		return m, nil
+		m.lists[m.activeTab].IsLoading = true
+		m.isPolling = true
+		return m, dispatchFetch(m.ctx, m.githubToken, m.activeTab, 1, m.lists[m.activeTab].CurrentDir)
 
 	case localFilesMsg:
 		tab := msg.Tab
@@ -195,6 +247,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lists[tab].IsLoading = false
 		m.lists[tab].HasLoaded = true
+		return m, nil
+
+	case notificationsMsg:
+		tab := msg.Tab
+		if msg.Err != nil {
+			m.lists[tab].Error = msg.Err.Error()
+		} else {
+			m.lists[tab].Notifications = msg.Data
+			m.lists[tab].TotalCount = len(msg.Data)
+			m.lists[tab].Error = ""
+		}
+		m.lists[tab].IsLoading = false
+		m.lists[tab].HasLoaded = true
+		m.isPolling = false
 		return m, nil
 
 	case itemsMsg:
@@ -244,7 +310,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// FILTERING ENGINE
 		if m.state == StateFiltering {
 			switch msg.String() {
 			case "esc", "enter":
@@ -313,15 +378,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lists[m.activeTab].Cursor = 0
 				m.lists[m.activeTab].ViewportStart = 0
 			}
-		case "/": // Trigger Filter Mode
+		case "/":
 			m.state = StateFiltering
 			return m, nil
+
+		case "C", "+":
+			c := exec.Command("gh", "pr", "create")
+			return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
 
 		case "tab", "right", "l":
 			m.activeTab = (m.activeTab + 1) % TabCount
 			m.filterQuery = ""
 			m.lists[m.activeTab].Cursor = 0
-			m.lists[m.activeTab].ViewportStart = 0 // Reset filter on tab change
+			m.lists[m.activeTab].ViewportStart = 0
 			if !m.lists[m.activeTab].HasLoaded && !m.lists[m.activeTab].IsLoading {
 				m.lists[m.activeTab].IsLoading = true
 				return m, dispatchFetch(m.ctx, m.githubToken, m.activeTab, 1, m.lists[m.activeTab].CurrentDir)
@@ -353,7 +422,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == TabFiles {
 				limit = len(getFilteredFiles(list.Files, m.filterQuery))
 			}
-
+			if m.activeTab == TabInbox {
+				limit = len(getFilteredNotifs(list.Notifications, m.filterQuery))
+			}
 			if list.Cursor < limit-1 {
 				list.Cursor++
 				if list.Cursor >= list.ViewportStart+m.listHeight {
@@ -361,7 +432,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		// Unifying 'v' to mean "View Details" (Files for PR, Logs for CI/CD)
+		case "t", "T":
+			if m.activeTab == TabPRs {
+				items := getFilteredItems(m.lists[TabPRs].Items, m.filterQuery)
+				if len(items) > 0 {
+					pr := items[m.lists[TabPRs].Cursor]
+					script := fmt.Sprintf(`
+clear
+echo "👻 GHOST HANDOFF INITIATED"
+echo "========================="
+echo "1. Verifying repository context..."
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "❌ Error: Not inside a git repository."; sleep 3; exit 1; fi
+ORIGINAL=$(git branch --show-current)
+STASHED=false
+echo "2. Stashing local changes (if any)..."
+if ! git diff --quiet || ! git diff --cached --quiet; then git stash; STASHED=true; fi
+echo "3. Checking out PR..."
+if ! gh pr checkout %s; then echo "❌ Error: Could not checkout PR."; if [ "$STASHED" = true ]; then git stash pop; fi; sleep 3; exit 1; fi
+echo ""
+echo "🟢 ENVIRONMENT READY"
+echo "You are now on the PR branch. Test the code locally."
+echo "Type 'exit' to return to GitFlow."
+echo "========================="
+${SHELL:-sh}
+echo ""
+echo "👻 RESTORING ENVIRONMENT"
+echo "Returning to $ORIGINAL..."
+git checkout $ORIGINAL
+if [ "$STASHED" = true ]; then git stash pop; fi
+sleep 1
+`, pr.HtmlUrl)
+
+					c := exec.Command("bash", "-c", script)
+					return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
+				}
+			}
+
 		case "v":
 			if m.activeTab == TabPRs {
 				items := getFilteredItems(m.lists[TabPRs].Items, m.filterQuery)
@@ -374,7 +480,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				runs := getFilteredRuns(m.lists[TabCICD].Runs, m.filterQuery)
 				if len(runs) > 0 {
 					run := runs[m.lists[TabCICD].Cursor]
-					// Pipe GitHub logs directly to standard less pager with color rendering
 					c := exec.Command("sh", "-c", fmt.Sprintf("gh run view %d --log | less -R", run.DatabaseId))
 					return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
 				}
@@ -436,6 +541,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
 					}
 				}
+			} else if m.activeTab == TabInbox && msg.String() == "e" {
+				notifs := getFilteredNotifs(m.lists[TabInbox].Notifications, m.filterQuery)
+				if len(notifs) > 0 {
+					notif := notifs[m.lists[TabInbox].Cursor]
+					m.lists[TabInbox].IsLoading = true
+					return m, executeAction(m.ctx, TabInbox, "mark_read", notif.Id)
+				}
 			}
 
 			url := ""
@@ -450,6 +562,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					url = items[m.lists[m.activeTab].Cursor].HtmlUrl
 				}
 			}
+
+			if m.activeTab == TabInbox && (msg.String() == "enter" || msg.String() == "o") {
+				notifs := getFilteredNotifs(m.lists[TabInbox].Notifications, m.filterQuery)
+				if len(notifs) > 0 {
+					url = strings.Replace(notifs[m.lists[TabInbox].Cursor].Subject.Url, "api.github.com/repos", "github.com", 1)
+					url = strings.Replace(url, "/pulls/", "/pull/", 1)
+				}
+			}
+
 			if url != "" {
 				exec.Command("termux-open-url", url).Start()
 				exec.Command("xdg-open", url).Start()
@@ -492,9 +613,26 @@ func (m model) View() string {
 }
 
 func main() {
+	cfg := loadConfig()
+	initStyles(cfg.PrimaryColor, cfg.BorderColor)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	p := tea.NewProgram(model{ctx: ctx, cancel: cancel, state: StateLoadingToken}, tea.WithAltScreen())
+
+	startTab := cfg.DefaultTab
+	if startTab < 0 || startTab >= TabCount {
+		startTab = 0
+	}
+
+	m := model{
+		ctx:       ctx,
+		cancel:    cancel,
+		state:     StateLoadingToken,
+		config:    cfg,
+		activeTab: startTab,
+	}
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Fatal Error: %v\n", err)
 	}
