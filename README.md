@@ -16,44 +16,67 @@ Designed specifically to run flawlessly in environments like Termux on Android, 
 ## 🚀 Installation & Setup
 
 ### Prerequisites
+
 1. **Go:** (1.21 or higher recommended)
 2. **GitHub CLI (`gh`):** Installed and authenticated.
    ```bash
    gh auth login
-3. **​Git: Installed and configured.                                                                                         ### Building from Source                                      ```bash
-git clone [https://github.com/TangoSplicer/gitflow-tui.git](https://github.com/TangoSplicer/gitflow-tui.git)
-cd gitflow-tui
+   ```
+3. **Git:** Installed and configured.
+
+### Building from Source
+
+```bash
+git clone [https://github.com/TangoSplicer/gitflow-TUI.git](https://github.com/TangoSplicer/gitflow-TUI.git)
+cd gitflow-TUI
 go mod tidy
 go build -ldflags="-s -w" -o gitflow .
-                                                              ### Move the binary to your system path (e.g., in Termux):    mv gitflow $PREFIX/bin/                                                                                                      Command Palette
-​GitFlow operates primarily via single-keystroke commands. Press ? anywhere in the app to open the Help Overlay.
-​Global Navigation:
-​tab / l: Next tab
-​shift+tab / h: Previous tab
-​/: Filter active list
-​,: Open Settings Menu
-​?: Toggle Help Menu
-​q: Quit
-​Interactions (PRs & Issues):
-​+ / C: Create new PR / Issue
-​r: Reply (Open commenting engine)
-​t: Ghost Handoff (Checkout PR locally)
-​v: View changed files (Diff)
-​m: Merge PR
-​c: Close PR/Issue
-​enter / o: Open in Browser
-​Interactions (CI/CD & Inbox):
-​v: View workflow logs
-​w / x: Rerun / Cancel workflow
-​e: Mark notification as read
-​🙏 Acknowledgments & Technologies
-​This project stands on the shoulders of giants. A massive thank you to the open-source community, specifically:
-​Charmbracelet: The absolute pioneers of modern CLI tooling.
-​Bubble Tea: The Elm-inspired framework that powers the entire asynchronous state machine of this app.
-​Lip Gloss: For the beautiful, responsive styling, borders, and layout rendering.
-​Bubbles: For the robust viewport and textarea components.
-​Huh: For the elegant, dynamic form engine used in PR creation and our settings menu.
-​Glamour: For making Markdown look incredible inside a terminal.
-​Atotto Clipboard: For handling seamless, cross-platform clipboard copy/pasting.
-​GitHub CLI: For providing the robust, secure authentication and API layer that powers our data fetching.
-​Built for the Power User Era.
+```
+
+Move the binary to your system path (e.g., in Termux):
+
+```bash
+mv gitflow $PREFIX/bin/
+```
+
+## ⌨️ Command Palette
+
+GitFlow operates primarily via single-keystroke commands. Press `?` anywhere in the app to open the Help Overlay.
+
+**Global Navigation:**
+* `tab` / `l`: Next tab
+* `shift+tab` / `h`: Previous tab
+* `/`: Filter active list
+* `,`: Open Settings Menu
+* `?`: Toggle Help Menu
+* `q`: Quit
+
+**Interactions (PRs & Issues):**
+* `+` / `C`: Create new PR / Issue
+* `r`: Reply (Open commenting engine)
+* `t`: Ghost Handoff (Checkout PR locally)
+* `v`: View changed files (Diff)
+* `m`: Merge PR
+* `c`: Close PR/Issue
+* `enter` / `o`: Open in Browser
+
+**Interactions (CI/CD & Inbox):**
+* `v`: View workflow logs
+* `w` / `x`: Rerun / Cancel workflow
+* `e`: Mark notification as read
+
+## 🙏 Acknowledgments & Technologies
+
+This project stands on the shoulders of giants. A massive thank you to the open-source community, specifically:
+
+* **[Charmbracelet](https://charm.sh/):** The absolute pioneers of modern CLI tooling. 
+  * **[Bubble Tea](https://github.com/charmbracelet/bubbletea):** The Elm-inspired framework that powers the entire asynchronous state machine of this app.
+  * **[Lip Gloss](https://github.com/charmbracelet/lipgloss):** For the beautiful, responsive styling, borders, and layout rendering.
+  * **[Bubbles](https://github.com/charmbracelet/bubbles):** For the robust `viewport` and `textarea` components.
+  * **[Huh](https://github.com/charmbracelet/huh):** For the elegant, dynamic form engine used in PR creation and our settings menu.
+  * **[Glamour](https://github.com/charmbracelet/glamour):** For making Markdown look incredible inside a terminal.
+* **[Atotto Clipboard](https://github.com/atotto/clipboard):** For handling seamless, cross-platform clipboard copy/pasting.
+* **[GitHub CLI](https://cli.github.com/):** For providing the robust, secure authentication and API layer that powers our data fetching.
+
+---
+*Built for the Power User Era.*
