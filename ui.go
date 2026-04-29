@@ -6,27 +6,45 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	boxStyle          = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1)
-	detailBoxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
-	tabActiveStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true).Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color("212"))
-	tabInactiveStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 1)
-	helpStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginTop(1)
-	itemStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
-	selectedItemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-
-	dirStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
-	successStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
-	failStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	pendingStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
-	dividerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	detailMetaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	repoBadgeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("87")).Bold(true)
-	draftBadgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Background(lipgloss.Color("236")).Padding(0, 1).MarginLeft(1)
+	boxStyle          lipgloss.Style
+	detailBoxStyle    lipgloss.Style
+	tabActiveStyle    lipgloss.Style
+	tabInactiveStyle  lipgloss.Style
+	helpStyle         lipgloss.Style
+	itemStyle         lipgloss.Style
+	selectedItemStyle lipgloss.Style
+	dirStyle          lipgloss.Style
+	successStyle      lipgloss.Style
+	failStyle         lipgloss.Style
+	pendingStyle      lipgloss.Style
+	dividerStyle      lipgloss.Style
+	detailMetaStyle   lipgloss.Style
+	repoBadgeStyle    lipgloss.Style
+	draftBadgeStyle   lipgloss.Style
 )
+
+func initStyles(primaryColor string, borderColor string) {
+	boxStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(borderColor)).Padding(0, 1)
+	detailBoxStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
+	tabActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(primaryColor)).Bold(true).Padding(0, 1).Border(lipgloss.NormalBorder(), false, false, true, false).BorderForeground(lipgloss.Color(primaryColor))
+	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 1)
+	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginTop(1)
+	itemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	selectedItemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(primaryColor)).Bold(true)
+	dirStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
+	failStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	pendingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+	dividerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	detailMetaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	repoBadgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("87")).Bold(true)
+	draftBadgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Background(lipgloss.Color("236")).Padding(0, 1).MarginLeft(1)
+}
 
 func getRepoName(url string) string {
 	parts := strings.Split(url, "/")
@@ -71,6 +89,171 @@ func formatSize(b int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
+func updateViewport(m model) model {
+	if !m.ready {
+		return m
+	}
+	usableSpace := (m.width / 2) - 6
+	if !m.isDesktop {
+		usableSpace = m.width - 6
+	}
+	if usableSpace < 10 {
+		usableSpace = 10
+	}
+
+	list := m.lists[m.activeTab]
+	var sb strings.Builder
+
+	if m.activeTab == TabCICD {
+		runs := getFilteredRuns(list.Runs, m.filterQuery)
+		if len(runs) > 0 {
+			run := runs[list.Cursor]
+			sb.WriteString(fmt.Sprintf("# %s\n\n", run.Name))
+			sb.WriteString(fmt.Sprintf("**Repository:** `%s`\n\n", getRepoName(run.Url)))
+			sb.WriteString(fmt.Sprintf("- **Status:** %s\n", run.Status))
+			sb.WriteString(fmt.Sprintf("- **Conclusion:** %s\n", run.Conclusion))
+			sb.WriteString(fmt.Sprintf("- **Ran:** %s\n", timeAgo(run.CreatedAt)))
+		}
+	} else if m.activeTab == TabFiles {
+		files := getFilteredFiles(list.Files, m.filterQuery)
+		if len(files) > 0 {
+			file := files[list.Cursor]
+			absPath := filepath.Join(list.CurrentDir, file.Name)
+			fType := "File"
+			if file.IsDir {
+				fType = "Directory"
+			}
+			sb.WriteString(fmt.Sprintf("# %s\n\n", file.Name))
+			sb.WriteString(fmt.Sprintf("**Path:** `%s`\n\n", absPath))
+			sb.WriteString(fmt.Sprintf("- **Type:** %s\n", fType))
+			sb.WriteString(fmt.Sprintf("- **Size:** %s\n", formatSize(file.Size)))
+			sb.WriteString(fmt.Sprintf("- **Modified:** %s\n", timeAgo(file.ModTime)))
+			sb.WriteString(fmt.Sprintf("- **Permissions:** `%s`\n", file.Mode.String()))
+		}
+	} else if m.activeTab == TabInbox {
+		notifs := getFilteredNotifs(list.Notifications, m.filterQuery)
+		if len(notifs) > 0 {
+			notif := notifs[list.Cursor]
+			sb.WriteString(fmt.Sprintf("# %s\n\n", notif.Subject.Title))
+			sb.WriteString(fmt.Sprintf("**Repository:** `%s`\n\n", notif.Repository.FullName))
+			sb.WriteString(fmt.Sprintf("- **Reason:** %s\n", notif.Reason))
+			sb.WriteString(fmt.Sprintf("- **Type:** %s\n", notif.Subject.Type))
+			sb.WriteString(fmt.Sprintf("- **Updated:** %s\n", timeAgo(notif.UpdatedAt)))
+		}
+	} else {
+		items := getFilteredItems(list.Items, m.filterQuery)
+		if len(items) > 0 {
+			item := items[list.Cursor]
+			sb.WriteString(fmt.Sprintf("# %s\n\n", item.Title))
+			draftStatus := ""
+			if item.Draft {
+				draftStatus = " **[DRAFT]** "
+			}
+			sb.WriteString(fmt.Sprintf("**Author:** @%s | **Opened:** %s %s\n\n", item.User.Login, timeAgo(item.CreatedAt), draftStatus))
+			body := item.Body
+			if body == "" {
+				body = "_No description provided._"
+			}
+			sb.WriteString("---\n\n" + body)
+		}
+	}
+
+	r, _ := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(usableSpace))
+	rendered, err := r.Render(sb.String())
+	if err != nil {
+		rendered = sb.String()
+	}
+
+	rendered = strings.TrimSpace(rendered)
+	m.vp.SetContent(rendered)
+	return m
+}
+
+func (m model) renderCommenting() string {
+	title := selectedItemStyle.Render(" 📝 Write a Comment ")
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(1, 2).Render(title + "\n\n" + m.ta.View() + "\n\n" + helpStyle.Render(" ctrl+s: submit • esc: cancel "))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderCreating() string {
+	titleStr := " Create Pull Request "
+	if m.createTarget == "issue" {
+		titleStr = " Create Issue "
+	}
+	title := selectedItemStyle.Render(fmt.Sprintf(" ✨ %s ", titleStr))
+
+	safeWidth := m.width - 6
+	if safeWidth > 60 {
+		safeWidth = 60
+	}
+	box := lipgloss.NewStyle().Width(safeWidth).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(1, 2).Render(title + "\n\n" + m.form.View() + "\n\n" + helpStyle.Render(" esc: cancel • enter: next "))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// NEW: Settings Form Renderer
+func (m model) renderSettings() string {
+	title := selectedItemStyle.Render(" ⚙  Preferences ")
+
+	safeWidth := m.width - 6
+	if safeWidth > 60 {
+		safeWidth = 60
+	}
+
+	box := lipgloss.NewStyle().
+		Width(safeWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(1, 2).
+		Render(title + "\n\n" + m.form.View() + "\n\n" + helpStyle.Render(" esc: cancel • enter: next • save to apply "))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderHelp() string {
+	title := selectedItemStyle.Render(" ⌨  GitFlow Command Palette ")
+
+	leftCol := `
+  GLOBAL
+  tab / l   : Next tab
+  s+tab / h : Prev tab
+  /         : Filter
+  y         : Copy
+  + / C     : Create PR/Issue
+  ,         : Settings
+  ?         : Help
+  q         : Quit
+  
+  SCROLLING
+  up / k    : Move up
+  down / j  : Move down
+  pgup/pgdn : Scroll pane
+  R         : Refresh`
+
+	rightCol := `
+  PRs & ISSUES
+  r         : Reply (Comment)
+  t / T     : Ghost Handoff
+  v         : View diff
+  m         : Merge
+  c         : Close
+  enter / o : Open Browser
+
+  PIPELINES & INBOX
+  v         : View logs
+  w / x     : Rerun / Cancel
+  e         : Mark read`
+
+	var content string
+	if m.isDesktop {
+		content = lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.NewStyle().Width(35).Foreground(lipgloss.Color("250")).Render(leftCol), lipgloss.NewStyle().Width(35).Foreground(lipgloss.Color("250")).Render(rightCol))
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(leftCol), "\n", lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(rightCol))
+	}
+
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(1, 2).Render(title + "\n" + content + "\n\n" + helpStyle.Render(" press esc, q, or ? to resume "))
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
 func (m model) renderDashboard() string {
 	var sb strings.Builder
 	tabNames := []string{" PRs", " Issues", " CI/CD", " Files", " Inbox"}
@@ -96,25 +279,29 @@ func (m model) renderDashboard() string {
 	}
 
 	var helpText string
-	if m.activeTab == TabPRs {
-		helpText = "t: test • v: diff • m: merge • c: close"
+	if m.activeTab == TabPRs || m.activeTab == TabIssues {
+		helpText = "r:reply • t:test • v:diff • m:merge"
 	} else if m.activeTab == TabCICD {
-		helpText = "v: logs • x: cancel • w: rerun"
+		helpText = "v:logs • x:cancel • w:rerun"
 	} else if m.activeTab == TabFiles {
-		helpText = "enter: open/edit"
+		helpText = "enter:open"
 	} else if m.activeTab == TabInbox {
-		helpText = "e: mark read • o: open browser"
-	} else {
-		helpText = "o: open in browser"
+		helpText = "e:mark read • o:open"
 	}
 
-	helpText = fmt.Sprintf("/: filter • +: create PR • %s • q: quit", helpText)
+	helpText = fmt.Sprintf("/:filter • y:copy • ,:cfg • ?:help • %s", helpText)
 
 	if m.state == StateFiltering {
-		helpText = selectedItemStyle.Render(fmt.Sprintf("🔍 Filter: %s█", m.filterQuery))
+		helpText = fmt.Sprintf("🔍 Filter: %s█", m.filterQuery)
 	} else if m.filterQuery != "" {
-		helpText = fmt.Sprintf("🔍 Filter: %s (esc to clear) • ", m.filterQuery) + helpText
+		helpText = fmt.Sprintf("🔍 Filter: %s • %s", m.filterQuery, helpText)
 	}
+
+	safeWidth := m.width - 4
+	if safeWidth < 10 {
+		safeWidth = 10
+	}
+	helpText = truncate(helpText, safeWidth)
 
 	sb.WriteString("\n" + helpStyle.Render(helpText))
 	return lipgloss.NewStyle().Margin(1, 2).Render(sb.String())
@@ -143,15 +330,23 @@ func (m model) renderListOnly(availableWidth int) string {
 		usableSpace = 10
 	}
 
+	visH := m.listHeight
+	if !m.isDesktop {
+		visH = m.listHeight / 2
+	}
+	if visH < 2 {
+		visH = 2
+	}
+
 	if list.Error != "" {
 		sb.WriteString(fmt.Sprintf(" %s\n", list.Error))
-		for i := 1; i < m.listHeight; i++ {
+		for i := 1; i < visH; i++ {
 			sb.WriteString("\n")
 		}
 		return sb.String()
 	} else if list.IsLoading {
 		sb.WriteString(" Working... Please wait.\n")
-		for i := 1; i < m.listHeight; i++ {
+		for i := 1; i < visH; i++ {
 			sb.WriteString("\n")
 		}
 		return sb.String()
@@ -173,13 +368,13 @@ func (m model) renderListOnly(availableWidth int) string {
 
 	if limit == 0 {
 		sb.WriteString(" No items found.\n")
-		for i := 1; i < m.listHeight; i++ {
+		for i := 1; i < visH; i++ {
 			sb.WriteString("\n")
 		}
 		return sb.String()
 	}
 
-	end := list.ViewportStart + m.listHeight
+	end := list.ViewportStart + visH
 	if end > limit {
 		end = limit
 	}
@@ -235,65 +430,17 @@ func (m model) renderListOnly(availableWidth int) string {
 			sb.WriteString("   " + rowStr + "\n")
 		}
 	}
-	for i := limit; i < m.listHeight; i++ {
+	for i := limit; i < visH; i++ {
 		sb.WriteString("\n")
 	}
 	return sb.String()
 }
 
 func (m model) renderDetailOnly(availableWidth int) string {
-	var sb strings.Builder
-	list := m.lists[m.activeTab]
-	usableSpace := availableWidth - 6
-
-	if m.activeTab == TabCICD {
-		runs := getFilteredRuns(list.Runs, m.filterQuery)
-		if len(runs) > 0 {
-			run := runs[list.Cursor]
-			sb.WriteString(repoBadgeStyle.Render(getRepoName(run.Url)) + "\n")
-			sb.WriteString(selectedItemStyle.Render(truncate(run.Name, usableSpace)) + "\n\n")
-			meta := fmt.Sprintf("ID: %d\nStatus: %s\nRan: %s", run.DatabaseId, run.Status, timeAgo(run.CreatedAt))
-			sb.WriteString(detailMetaStyle.Render(meta))
-		}
-	} else if m.activeTab == TabFiles {
-		files := getFilteredFiles(list.Files, m.filterQuery)
-		if len(files) > 0 {
-			file := files[list.Cursor]
-			absPath := filepath.Join(list.CurrentDir, file.Name)
-			sb.WriteString(repoBadgeStyle.Render(truncate(absPath, usableSpace)) + "\n\n")
-
-			fType := "File"
-			if file.IsDir {
-				fType = "Directory"
-			}
-			meta := fmt.Sprintf("Type: %s\nSize: %s\nModified: %s\nPerms: %s", fType, formatSize(file.Size), timeAgo(file.ModTime), file.Mode.String())
-			sb.WriteString(detailMetaStyle.Render(meta))
-		}
-	} else if m.activeTab == TabInbox {
-		notifs := getFilteredNotifs(list.Notifications, m.filterQuery)
-		if len(notifs) > 0 {
-			notif := notifs[list.Cursor]
-			sb.WriteString(repoBadgeStyle.Render(notif.Repository.FullName) + "\n")
-			sb.WriteString(selectedItemStyle.Render(truncate(notif.Subject.Title, usableSpace)) + "\n\n")
-			meta := fmt.Sprintf("Reason: %s\nType: %s\nUpdated: %s", notif.Reason, notif.Subject.Type, timeAgo(notif.UpdatedAt))
-			sb.WriteString(detailMetaStyle.Render(meta))
-		}
-	} else {
-		items := getFilteredItems(list.Items, m.filterQuery)
-		if len(items) > 0 {
-			item := items[list.Cursor]
-			sb.WriteString(repoBadgeStyle.Render(getRepoName(item.HtmlUrl)) + "\n")
-			sb.WriteString(selectedItemStyle.Render(truncate(strings.ReplaceAll(item.Title, "\n", " "), usableSpace)) + "\n\n")
-
-			meta := fmt.Sprintf("Author: @%s\nOpened: %s", item.User.Login, timeAgo(item.CreatedAt))
-			if item.Draft {
-				sb.WriteString(detailMetaStyle.Render(meta) + draftBadgeStyle.Render("DRAFT"))
-			} else {
-				sb.WriteString(detailMetaStyle.Render(meta))
-			}
-		}
+	if !m.ready {
+		return "\n Loading...\n"
 	}
-	return sb.String()
+	return m.vp.View()
 }
 
 func (m model) renderFileViewer() string {
@@ -331,7 +478,7 @@ func (m model) renderFileViewer() string {
 		sb.WriteString("\n")
 	}
 	box := boxStyle.Width(boxWidth).Render(sb.String())
-	helpMenu := helpStyle.Render("e/enter: edit local file • esc/q: back • ↑/↓: move")
+	helpMenu := helpStyle.Render("e/enter: edit local file • esc/q: back • ?: help")
 
 	return lipgloss.NewStyle().Margin(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, box, "\n"+helpMenu))
 }

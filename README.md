@@ -1,54 +1,58 @@
-# GitFlow TUI
+# 🌊 GitFlow TUI
 
-A radically fast, universally responsive GitHub command center built for the terminal. 
+A blazing fast, mobile-first, power-user terminal user interface (TUI) for GitHub. Built entirely in Go, GitFlow sits on top of the standard GitHub CLI (`gh`) to provide a beautiful, asynchronous, and deeply integrated dashboard for your repositories. 
 
-GitFlow TUI was engineered with a unique constraint: it was built entirely from a mobile terminal device. Because of this, it features a custom Adaptive Breakpoint engine that seamlessly scales from a highly compressed, stacked mobile layout into a rich, split-pane desktop dashboard the moment your screen width allows it.
+Designed specifically to run flawlessly in environments like Termux on Android, as well as standard desktop terminals.
 
-No YAML configuration files. No heavy electron wrappers. Just a compiled Go binary that uses your current directory to figure out what you need to see.
+## ✨ Features
 
-## Features
+- **Multi-Tab Dashboard:** Seamlessly navigate between Pull Requests, Issues, CI/CD Pipelines, Local Files, and your GitHub Notifications Inbox.
+- **Native Interactions:** Read rich Markdown, submit comments, and create new Pull Requests or Issues entirely within the TUI using native floating forms.
+- **The Ghost Handoff:** Press `t` on any Pull Request to instantly stash your current work, check out the PR branch to test the code locally, and perfectly restore your original environment the moment you exit.
+- **CI/CD Management:** Monitor GitHub Actions in real-time. View logs, cancel stuck runs, or trigger reruns with single keystrokes.
+- **Dynamic Settings:** A built-in configuration editor allows you to completely remap the application's primary and border colors on the fly.
+- **Fuzzy Filtering:** Type `/` to instantly filter hundreds of PRs, files, or notifications locally without waiting for API calls.
 
-* **Universal Adaptive Layout:** Automatically pivots between Mobile (stacked) and Desktop (split-pane) layouts based on terminal column width.
-* **Global & Local Context:** The PR and Issues tabs aggregate your tasks globally across all repositories. The CI/CD and Files tabs automatically infer your context based on the local git repository you run the tool from.
-* **The Action Engine:** Squash and merge PRs, close issues, or cancel hanging CI/CD pipelines directly from the dashboard.
-* **Editor Handoff Architecture:** Browse your local repository file tree. Pressing enter on a file suspends the dashboard, hands terminal control to your system editor (Neovim, Nano, Helix), and seamlessly resumes the TUI the second you save and quit.
-* **Deep Observability:** View color-coded diff stats for Pull Requests, or stream raw, colorized GitHub Action failure logs directly into the terminal pager.
-* **Fuzzy Filtering:** Instantly search across hundreds of PRs, pipelines, or files by typing queries directly into the UI.
-* **Real-Time Polling:** Background timers silently poll the GitHub API, updating CI/CD pipeline statuses from pending to success while you watch.
+## 🚀 Installation & Setup
 
-## Prerequisites
-
-GitFlow TUI relies on the official GitHub CLI for authentication and raw data fetching. 
-
-1. Install Go (1.20+)
-2. Install the GitHub CLI (gh)
-3. Ensure you are authenticated: gh auth login
-
-## Installation
-
-Clone the repository and build the binary:
-
-```bash
-git clone [https://github.com/YOUR_USERNAME/gitflow-TUI.git](https://github.com/YOUR_USERNAME/gitflow-TUI.git)
-cd gitflow-TUI
+### Prerequisites
+1. **Go:** (1.21 or higher recommended)
+2. **GitHub CLI (`gh`):** Installed and authenticated.
+   ```bash
+   gh auth login
+3. **​Git: Installed and configured.                                                                                         ### Building from Source                                      git clone [https://github.com/TangoSplicer/gitflow-tui.git](https://github.com/TangoSplicer/gitflow-tui.git)
+cd gitflow-tui
+go mod tidy
 go build -ldflags="-s -w" -o gitflow .
-mv gitflow /usr/local/bin/  # Or $PREFIX/bin/ if using Termux
-## Usage
-​Navigate to any local git repository on your machine and launch the dashboard:                                              cd my-project
-gitflow
-## Global Keybindings
-​Tab / Shift+Tab: Cycle between panes (PRs, Issues, CI/CD, Files).
-​j / k (or Up / Down): Navigate lists.
-​/: Open the fuzzy filter search bar (Press Esc to clear).
-​o: Open the highlighted item in your default web browser.
-​r: Force a manual data refresh.
-​q / Ctrl+C: Quit the application.                             ## Tab-Specific Actions                                       # ## Pull Requests
-​m: Squash and merge the selected PR.
-​c: Close the selected PR.
-​v: Open the File Viewer overlay to see color-coded line additions/deletions.                                                # ## CI/CD Pipelines
-​x: Cancel a running pipeline.
-​w: Re-run a failed pipeline.
-​v: Stream the raw pipeline execution logs into your terminal pager.                                                         # ## Local Files
-​Enter: Navigate into a directory, or open a file in your $EDITOR.                                                           ## Architecture
-​GitFlow TUI is built in Go using the Bubble Tea framework for the state machine and event loop, alongside Lipgloss for layout and terminal styling. It leverages a multi-file package structure separating the API interactions, UI rendering logic, and the core update loop.                                        ## License
-​MIT License. Feel free to fork, break, and rebuild it.
+                                                              ### Move the binary to your system path (e.g., in Termux):    mv gitflow $PREFIX/bin/                                                                                                      Command Palette
+​GitFlow operates primarily via single-keystroke commands. Press ? anywhere in the app to open the Help Overlay.
+​Global Navigation:
+​tab / l: Next tab
+​shift+tab / h: Previous tab
+​/: Filter active list
+​,: Open Settings Menu
+​?: Toggle Help Menu
+​q: Quit
+​Interactions (PRs & Issues):
+​+ / C: Create new PR / Issue
+​r: Reply (Open commenting engine)
+​t: Ghost Handoff (Checkout PR locally)
+​v: View changed files (Diff)
+​m: Merge PR
+​c: Close PR/Issue
+​enter / o: Open in Browser
+​Interactions (CI/CD & Inbox):
+​v: View workflow logs
+​w / x: Rerun / Cancel workflow
+​e: Mark notification as read
+​🙏 Acknowledgments & Technologies
+​This project stands on the shoulders of giants. A massive thank you to the open-source community, specifically:
+​Charmbracelet: The absolute pioneers of modern CLI tooling.
+​Bubble Tea: The Elm-inspired framework that powers the entire asynchronous state machine of this app.
+​Lip Gloss: For the beautiful, responsive styling, borders, and layout rendering.
+​Bubbles: For the robust viewport and textarea components.
+​Huh: For the elegant, dynamic form engine used in PR creation and our settings menu.
+​Glamour: For making Markdown look incredible inside a terminal.
+​Atotto Clipboard: For handling seamless, cross-platform clipboard copy/pasting.
+​GitHub CLI: For providing the robust, secure authentication and API layer that powers our data fetching.
+​Built for the Power User Era.
