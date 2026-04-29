@@ -20,7 +20,8 @@ Designed specifically to run flawlessly in environments like Termux on Android, 
 2. **GitHub CLI (`gh`):** Installed and authenticated.
    ```bash
    gh auth login
-3. **​Git: Installed and configured.                                                                                         ### Building from Source                                      git clone [https://github.com/TangoSplicer/gitflow-tui.git](https://github.com/TangoSplicer/gitflow-tui.git)
+3. **​Git: Installed and configured.                                                                                         ### Building from Source                                      ```bash
+git clone [https://github.com/TangoSplicer/gitflow-tui.git](https://github.com/TangoSplicer/gitflow-tui.git)
 cd gitflow-tui
 go mod tidy
 go build -ldflags="-s -w" -o gitflow .
