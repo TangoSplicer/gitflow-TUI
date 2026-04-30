@@ -1,4 +1,3 @@
-# 🌊 GitFlow TUI
 
 A blazing fast, mobile-first, power-user terminal user interface (TUI) for GitHub. Built entirely in Go, GitFlow sits on top of the standard GitHub CLI (`gh`) to provide a beautiful, asynchronous, and deeply integrated dashboard for your repositories. 
 
@@ -7,7 +6,8 @@ Designed specifically to run flawlessly in environments like Termux on Android, 
 ## ✨ Features
 
 - **Multi-Tab Dashboard:** Seamlessly navigate between Pull Requests, Issues, CI/CD Pipelines, Local Files, and your GitHub Notifications Inbox.
-- **Native Interactions:** Read rich Markdown, submit comments, and create new Pull Requests or Issues entirely within the TUI using native floating forms.
+- **The Review Engine:** Perform inline code reviews directly from the terminal. Jump into a PR's diff, press `r` on any file, and submit feedback without ever opening a browser.
+- **Native Interactions:** Read rich Markdown, submit general comments, and create new Pull Requests or Issues entirely within the TUI using native floating forms.
 - **The Ghost Handoff:** Press `t` on any Pull Request to instantly stash your current work, check out the PR branch to test the code locally, and perfectly restore your original environment the moment you exit.
 - **CI/CD Management:** Monitor GitHub Actions in real-time. View logs, cancel stuck runs, or trigger reruns with single keystrokes.
 - **Dynamic Settings:** A built-in configuration editor allows you to completely remap the application's primary and border colors on the fly.
@@ -51,6 +51,10 @@ GitFlow operates primarily via single-keystroke commands. Press `?` anywhere in 
 * `?`: Toggle Help Menu
 * `q`: Quit
 
+**Forms & Commenting:**
+* `Ctrl+D` / `Ctrl+S`: Submit form or comment
+* `Esc`: Cancel / Abort
+
 **Interactions (PRs & Issues):**
 * `+` / `C`: Create new PR / Issue
 * `r`: Reply (Open commenting engine)
@@ -59,6 +63,10 @@ GitFlow operates primarily via single-keystroke commands. Press `?` anywhere in 
 * `m`: Merge PR
 * `c`: Close PR/Issue
 * `enter` / `o`: Open in Browser
+
+**Interactions (File Viewer):**
+* `enter` / `r`: Review specific file
+* `e`: Edit file locally (nano/vim)
 
 **Interactions (CI/CD & Inbox):**
 * `v`: View workflow logs
