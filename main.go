@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -114,48 +113,6 @@ type model struct {
 
 	ready         bool
 	previousState AppState
-}
-
-func loadConfig() AppConfig {
-	cfg := AppConfig{DefaultTab: 0, RefreshInterval: 10, PrimaryColor: "212", BorderColor: "63"}
-	home := os.Getenv("HOME")
-	if home == "" {
-		home, _ = os.UserHomeDir()
-	}
-	if home == "" {
-		return cfg
-	}
-
-	configDir := filepath.Join(home, ".config", "gitflow")
-	configPath := filepath.Join(configDir, "config.json")
-
-	if data, err := os.ReadFile(configPath); err == nil {
-		json.Unmarshal(data, &cfg)
-	} else {
-		if err := os.MkdirAll(configDir, 0755); err == nil {
-			data, _ := json.MarshalIndent(cfg, "", "  ")
-			os.WriteFile(configPath, data, 0644)
-		}
-	}
-	return cfg
-}
-
-func saveConfig(cfg AppConfig) {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home, _ = os.UserHomeDir()
-	}
-	if home == "" {
-		return
-	}
-
-	configDir := filepath.Join(home, ".config", "gitflow")
-	configPath := filepath.Join(configDir, "config.json")
-
-	os.MkdirAll(configDir, 0755)
-	if data, err := json.MarshalIndent(cfg, "", "  "); err == nil {
-		os.WriteFile(configPath, data, 0644)
-	}
 }
 
 func getFilteredItems(items []GitHubItem, query string) []GitHubItem {
@@ -722,18 +679,9 @@ func (m model) handleDashboardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			items := getFilteredItems(m.lists[TabPRs].Items, m.filterQuery)
 			if len(items) > 0 {
 				pr := items[m.lists[TabPRs].Cursor]
-				script := fmt.Sprintf(`
-clear; echo "👻 GHOST HANDOFF INITIATED"; echo "========================="
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "❌ Error: Not inside a git repository."; sleep 3; exit 1; fi
-ORIGINAL=$(git branch --show-current); STASHED=false
-if ! git diff --quiet || ! git diff --cached --quiet; then git stash; STASHED=true; fi
-if ! gh pr checkout %s; then echo "❌ Error: Could not checkout PR."; if [ "$STASHED" = true ]; then git stash pop; fi; sleep 3; exit 1; fi
-echo "🟢 ENVIRONMENT READY. Type 'exit' to return."; echo "========================="
-${SHELL:-sh}
-echo "👻 RESTORING ENVIRONMENT..."; git checkout $ORIGINAL
-if [ "$STASHED" = true ]; then git stash pop; fi; sleep 1
-`, pr.HtmlUrl)
-				c := exec.Command("bash", "-c", script)
+				c := exec.Command("gh", "pr", "checkout", pr.HtmlUrl)
+				c.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1")
+
 				return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
 			}
 		}
@@ -750,7 +698,9 @@ if [ "$STASHED" = true ]; then git stash pop; fi; sleep 1
 			runs := getFilteredRuns(m.lists[TabCICD].Runs, m.filterQuery)
 			if len(runs) > 0 {
 				run := runs[m.lists[TabCICD].Cursor]
-				c := exec.Command("sh", "-c", fmt.Sprintf("gh run view %d --log | less -R", run.DatabaseId))
+				c := exec.Command("gh", "run", "view", fmt.Sprintf("%d", run.DatabaseId), "--log")
+				c.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1")
+
 				return m, tea.ExecProcess(c, func(err error) tea.Msg { return editorFinishedMsg{err} })
 			}
 		}

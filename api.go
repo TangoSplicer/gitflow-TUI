@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,10 +144,19 @@ func fetchTabItems(ctx context.Context, token string, tab int, page int) tea.Cmd
 		if tab == TabPRs {
 			query = "is:pr+is:open+author:@me"
 		}
-		req, _ := http.NewRequestWithContext(reqCtx, "GET", fmt.Sprintf("https://api.github.com/search/issues?q=%s&per_page=30&page=%d", query, page), nil)
-		req.Header.Add("Authorization", "Bearer "+token)
-		req.Header.Add("Accept", "application/vnd.github.v3+json")
-		resp, err := (&http.Client{}).Do(req)
+		params := url.Values{}
+		params.Set("q", strings.ReplaceAll(query, "+", " "))
+		params.Set("per_page", "30")
+		params.Set("page", fmt.Sprintf("%d", page))
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, "https://api.github.com/search/issues?"+params.Encode(), nil)
+		if err != nil {
+			return errMsg{fmt.Errorf("build GitHub request: %w", err)}
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+
 		if err != nil {
 			if reqCtx.Err() == context.Canceled {
 				return nil
@@ -153,8 +164,14 @@ func fetchTabItems(ctx context.Context, token string, tab int, page int) tea.Cmd
 			return errMsg{fmt.Errorf("network error: %w", err)}
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+			return errMsg{fmt.Errorf("GitHub search returned %s: %s", resp.Status, strings.TrimSpace(string(body)))}
+		}
 		var result SearchResponse
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&result); err != nil {
+			return errMsg{fmt.Errorf("parse GitHub search response: %w", err)}
+		}
 		return itemsMsg{Tab: tab, Data: result}
 	}
 }
